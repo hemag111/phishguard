@@ -1,0 +1,110 @@
+<!doctype html>
+<html>
+<head><meta charset='utf-8'><title>PhishGuard test runner</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; }
+  table { border-collapse: collapse; margin-top: 12px; }
+  td, th { border: 1px solid #aaa; padding: 6px 10px; text-align: left; font-size: 14px; }
+  th { background: #eee; }
+  .bad { background: #fde0e0; }
+  .good { background: #e0f5e0; }
+</style>
+</head>
+<body>
+<h2>PhishGuard test runner</h2>
+<div id='summary'>Running...</div>
+<div id='tablehost'></div>
+<div id='frames'></div>
+<script src='../lib/features.js'></script>
+<script src='../lib/heuristics.js'></script>
+<script src='../model/model.js'></script>
+<script src='../lib/ml.js'></script>
+<script src='../lib/decision.js'></script>
+<script src='../lib/dom.js'></script>
+<script src='../lib/fusion.js'></script>
+<script>
+const cdn = [1,2,3,4,5,6].map(n => `<a href='https://cdn.example/${n}'>x</a>`).join('');
+const candidates = ['https://www.accountsupdate.com', 'https://www.mybankservices.com', 'https://secureportal.co.in',
+  'https://www.cardservices.org', 'https://www.onlinebanking.co.in', 'https://www.mysecureaccess.net',
+  'https://www.customerhelpdesk.com', 'https://www.paymentportal.org'];
+const deep = candidates.filter(u => PD.decide(PD.mlScore(PD.extract(new URL(u).origin)), PD.heuristics(u).score).route === 'deep');
+const urlA = (deep[0] || candidates[0]) + '/', urlB = (deep[1] || candidates[1]) + '/';
+const deepNote = deep.length >= 2 ? '' : ' WARNING: fewer than two candidate domains went to the deep route.';
+
+const cases = [
+  { name: 'Fake bank login on look-alike domain', truth: 'phishing', url: 'https://secure-paypa1-login.xyz/',
+    html: `<h3>Sign in</h3><form action='http://collector.example/post' method='post'><input type='text' name='user'><input type='password' name='pw'><input name='card_number'><button>Login</button></form>` },
+  { name: 'Phishing login on a clean-looking domain (A)', truth: 'phishing', url: urlA,
+    html: `<h3>Customer login</h3><form action='http://collector.example/post' method='post'><input type='text' name='user'><input type='password' name='pw'><button>Login</button></form><a href='http://other.example/x'>www.mybank.com</a>` },
+  { name: 'Phishing card page on a clean-looking domain (B)', truth: 'phishing', url: urlB,
+    html: `<h3>Update payment</h3><form action='http://collector.example/pay' method='post'><input name='card_number'><input name='cvv'><input name='otp'><button>Pay</button></form><iframe src='about:blank' width='0' height='0'></iframe>` },
+  { name: 'OTP page with hidden iframe', truth: 'phishing', url: 'http://account-verify.top/',
+    html: `<h3>Verify OTP</h3><form action='' method='post'><input name='otp'><button>Verify</button></form><iframe src='about:blank' width='0' height='0'></iframe>` },
+  { name: 'College portal login (same-domain form)', truth: 'legitimate', url: 'https://portal.mycollege.edu/',
+    html: `<h3>Student login</h3><form action='/login' method='post'><input type='text' name='usn'><input type='password' name='pw'><button>Login</button></form>` },
+  { name: 'Blog page with no forms', truth: 'legitimate', url: 'https://www.exampleblog.org/',
+    html: `<h3>My blog</h3><p>Hello</p><a href='https://www.wikipedia.org'>Wikipedia</a>` },
+  { name: 'Newsletter signup (email only)', truth: 'legitimate', url: 'https://www.example-news.com/',
+    html: `<h3>Subscribe</h3><form action='/subscribe' method='post'><input type='text' name='email'><button>Join</button></form>` },
+  { name: 'Shop login with many outside links', truth: 'legitimate', url: 'https://www.myshop.in/',
+    html: `<h3>Login</h3>${cdn}<form action='/login' method='post'><input type='password' name='pw'><button>Login</button></form>` }
+];
+
+function runCase(c) {
+  return new Promise(resolve => {
+    const fr = document.createElement('iframe');
+    fr.style.cssText = 'width:700px;height:120px;border:1px solid #ccc;display:block;margin:4px 0';
+    fr.srcdoc = c.html;
+    fr.onload = () => {
+      try {
+        const t0 = performance.now();
+        const ml = PD.mlScore(PD.extract(new URL(c.url).origin));
+        const h = PD.heuristics(c.url);
+        const d = PD.decide(ml, h.score);
+        const dom = PD.domAnalyze(fr.contentDocument, c.url);
+        const r = PD.fuse(ml, h.score, dom.score, dom.hasSensitive);
+        const ms = performance.now() - t0;
+        const final = d.route === 'immediate' ? 'High Risk (immediate)' : r.level;
+        resolve({ c, ml, rules: h.score, dom: dom.score, fused: r.score, route: d.route, final, ms,
+          urlOnlyFlag: d.route === 'immediate', fullFlag: final !== 'Safe' });
+      } catch (e) { resolve({ c, error: String(e) }); }
+    };
+    document.getElementById('frames').appendChild(fr);
+  });
+}
+
+(async () => {
+  const results = [];
+  for (const c of cases) results.push(await runCase(c));
+  const heads = ['Test page', 'Truth', 'ML', 'Rules', 'DOM', 'Fused', 'Route', 'Final result', 'ms', 'URL-only correct?', 'Full system correct?'];
+  const table = document.createElement('table');
+  const hr = document.createElement('tr');
+  heads.forEach(h => { const th = document.createElement('th'); th.textContent = h; hr.appendChild(th); });
+  table.appendChild(hr);
+  let urlOk = 0, fullOk = 0, total = 0, n = 0;
+  results.forEach(x => {
+    const tr = document.createElement('tr');
+    if (x.error) {
+      const td = document.createElement('td'); td.colSpan = heads.length;
+      td.textContent = x.c.name + ' failed: ' + x.error; tr.appendChild(td); table.appendChild(tr); return;
+    }
+    const phish = x.c.truth === 'phishing';
+    const u = x.urlOnlyFlag === phish, f = x.fullFlag === phish;
+    if (u) urlOk++; if (f) fullOk++; total += x.ms; n++;
+    const vals = [x.c.name, x.c.truth, x.ml.toFixed(2), x.rules.toFixed(2), x.dom.toFixed(2), x.fused.toFixed(2),
+      x.route, x.final, x.ms.toFixed(1), u ? 'yes' : 'NO', f ? 'yes' : 'NO'];
+    vals.forEach((v, i) => {
+      const td = document.createElement('td'); td.textContent = v;
+      if (i >= 9) td.className = v === 'yes' ? 'good' : 'bad';
+      tr.appendChild(td);
+    });
+    table.appendChild(tr);
+  });
+  document.getElementById('tablehost').appendChild(table);
+  document.getElementById('summary').textContent =
+    'URL layers only: ' + urlOk + ' of ' + n + ' correct. Full system (with DOM): ' + fullOk + ' of ' + n +
+    ' correct. Average scoring time: ' + (total / n).toFixed(1) + ' ms per page.' + deepNote;
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+﻿Configuration          threshold  precision  recall  F1     false alarms
+Rules only             0.21       0.998      0.105   0.190  1
+ML only                0.91       0.990      0.712   0.829  28
+ML + rules (0.8/0.2)   0.74       0.991      0.709   0.827  26

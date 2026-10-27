@@ -1,0 +1,2 @@
+﻿legitimate flagged: 1 of 4028
+phishing flagged: 138 of 3972

@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "PhishGuard",
+  "version": "1.0",
+  "description": "Client-side multi-layer phishing detection",
+  "action": { "default_popup": "popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": [
+        "lib/features.js",
+        "lib/heuristics.js",
+        "model/model.js",
+        "lib/ml.js",
+        "lib/decision.js",
+        "lib/dom.js",
+        "lib/fusion.js",
+        "lib/ui.js",
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}
