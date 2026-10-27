@@ -1,7 +1,6 @@
 # PhishGuard
 
 A client-side multi-layer phishing detection framework for web browsers (Chrome extension).
-Mini project, Dept. of ISE, Siddaganga Institute of Technology, Tumakuru.
 
 ## How it works
 1. URL feature extraction (15 features)
@@ -32,5 +31,3 @@ https://archive.ics.uci.edu/dataset/967, save the CSV as `ml/raw.csv`, then in t
 ## Limitations
 Trained on domain names only; the dataset favours HTTPS as a legitimate signal; DOM tests use hand-made pages.
 
-## Team
-[Your names]
